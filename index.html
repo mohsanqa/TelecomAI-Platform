@@ -28,9 +28,8 @@ export default function App() {
   const callGemini = async (prompt, fileData, fileObj) => {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
     
-    // Agentic System Instruction
     const systemInstruction = `You are LinkBot, an expert telecom assistant. 
-    1. If the user asks a general question (e.g., history of fiber optics), answer accurately from your broad knowledge base.
+    1. If the user asks a general question, answer accurately from your broad knowledge base.
     2. If the user asks a question about an uploaded document, analyze the provided file content. You MUST cite the specific section or page if possible.
     3. Always maintain a professional, helpful, and concise tone.`;
 
@@ -77,16 +76,9 @@ export default function App() {
       return;
     }
     setChatLog(prev => [...prev, { role: 'user', text: `${action} this document.` }]);
-    
-    let prompt = "";
-    if (action === 'Mindmap') {
-        prompt = "Create a structured mindmap for the provided document. Include a root node and several branches with minimalistic descriptions for each node.";
-    } else if (action === 'Presentation') {
-        prompt = "Create a minimalistic presentation outline with 5-7 slides based on the provided document.";
-    } else {
-        prompt = `Provide a ${action.toLowerCase()} of this technical document.`;
-    }
-    
+    let prompt = action === 'Mindmap' ? "Create a structured mindmap for the provided document. Include a root node and several branches with minimalistic descriptions for each node." : 
+                 action === 'Presentation' ? "Create a minimalistic presentation outline with 5-7 slides based on the provided document." : 
+                 `Provide a ${action.toLowerCase()} of this technical document.`;
     const res = await callGemini(prompt, activeFile, rawFile);
     setChatLog(prev => [...prev, { role: 'bot', text: res }]);
   };
@@ -110,7 +102,6 @@ export default function App() {
             ))}
         </div>
       </aside>
-      
       <main className="w-[45%] flex flex-col h-full bg-slate-100 overflow-y-auto p-6">
         {activeFile ? (
           <div className="space-y-6">
@@ -133,7 +124,6 @@ export default function App() {
           </div>
         ) : (<div className="h-full flex items-center justify-center text-slate-400 italic">Select a document</div>)}
       </main>
-      
       <aside className="w-[30%] bg-white flex flex-col border-l border-slate-200">
         <div className="p-4 border-b flex items-center gap-2"><Bot className="w-5 h-5 text-[#5B5FEF]" /><h2 className="font-bold text-sm">LinkBot</h2></div>
         <div className="flex-1 overflow-y-auto p-4 space-y-4">{chatLog.map((log, i) => (<div key={i} className={`p-3 rounded-xl text-sm ${log.role === 'user' ? 'bg-[#5B5FEF] text-white ml-auto' : 'bg-slate-100'}`}>{log.text}</div>))}</div>
