@@ -1,0 +1,149 @@
+import React, { useState, useRef } from 'react';
+import { 
+  Network, 
+  Key,
+  CloudUpload,
+  Bot,
+  Send,
+  File as FileIcon,
+  Clock,
+  BrainCircuit,
+  Presentation
+} from 'lucide-react';
+
+const QUICK_ACTIONS = ['Summarize', 'Explain', 'Create Checklist', 'Troubleshoot', 'Mindmap', 'Presentation'];
+
+export default function App() {
+  const [apiStatus, setApiStatus] = useState('disconnected');
+  const [apiKey, setApiKey] = useState('');
+  const [activeFile, setActiveFile] = useState(null);
+  const [rawFile, setRawFile] = useState(null);
+  const [uploadedFiles, setUploadedFiles] = useState([]);
+  const [chatLog, setChatLog] = useState([
+    { role: 'bot', text: 'Hello! I am LinkBot. I can answer general telecom questions or provide deep analysis on your uploaded documents with specific references.' }
+  ]);
+  const [inputValue, setInputValue] = useState('');
+  const fileInputRef = useRef(null);
+
+  const callGemini = async (prompt, fileData, fileObj) => {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+    
+    // Agentic System Instruction
+    const systemInstruction = `You are LinkBot, an expert telecom assistant. 
+    1. If the user asks a general question (e.g., history of fiber optics), answer accurately from your broad knowledge base.
+    2. If the user asks a question about an uploaded document, analyze the provided file content. You MUST cite the specific section or page if possible.
+    3. Always maintain a professional, helpful, and concise tone.`;
+
+    let contents = [];
+    const textContent = fileData ? `Document context: ${fileData.name}. Query: ${prompt}. Please provide answers with references if applicable.` : prompt;
+
+    if (fileData && fileObj) {
+        const reader = new FileReader();
+        const base64Data = await new Promise((resolve) => {
+            reader.onloadend = () => resolve(reader.result.split(',')[1]);
+            reader.readAsDataURL(fileObj);
+        });
+        contents = [{ parts: [{ text: `${systemInstruction}\n\n${textContent}` }, { inlineData: { mimeType: fileObj.type, data: base64Data } }] }];
+    } else {
+        contents = [{ parts: [{ text: `${systemInstruction}\n\n${textContent}` }] }];
+    }
+
+    try {
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ contents })
+        });
+        const data = await response.json();
+        if (data.error) return `API Error (${data.error.code}): ${data.error.message}`;
+        return data.candidates?.[0]?.content?.parts?.[0]?.text || "Gemini returned no response.";
+    } catch (err) {
+        return `Network Error: ${err.message}`;
+    }
+  };
+
+  const sendMessage = async () => {
+    if (!inputValue.trim()) return;
+    const userText = inputValue;
+    setChatLog(prev => [...prev, { role: 'user', text: userText }]);
+    setInputValue('');
+    const response = await callGemini(userText, activeFile, rawFile);
+    setChatLog(prev => [...prev, { role: 'bot', text: response }]);
+  };
+
+  const handleAction = async (action) => {
+    if (apiStatus !== 'connected') {
+      alert("Please connect your Gemini API key first.");
+      return;
+    }
+    setChatLog(prev => [...prev, { role: 'user', text: `${action} this document.` }]);
+    
+    let prompt = "";
+    if (action === 'Mindmap') {
+        prompt = "Create a structured mindmap for the provided document. Include a root node and several branches with minimalistic descriptions for each node.";
+    } else if (action === 'Presentation') {
+        prompt = "Create a minimalistic presentation outline with 5-7 slides based on the provided document.";
+    } else {
+        prompt = `Provide a ${action.toLowerCase()} of this technical document.`;
+    }
+    
+    const res = await callGemini(prompt, activeFile, rawFile);
+    setChatLog(prev => [...prev, { role: 'bot', text: res }]);
+  };
+
+  return (
+    <div className="flex h-screen bg-slate-50 text-slate-900 font-sans overflow-hidden">
+      <aside className="w-[25%] border-r border-slate-200 bg-white flex flex-col z-10 overflow-y-auto">
+        <div className="p-6 border-b border-slate-100"><div className="flex items-center gap-2"><Network className="w-6 h-6 text-[#5B5FEF]" /><span className="font-bold text-lg">TelecomAI</span></div></div>
+        <div className="p-4 border-b border-slate-100"><div className="relative flex items-center gap-2 border border-slate-200 rounded-lg bg-white px-2 py-1.5"><Key className="w-3 h-3 text-slate-400" /><input type="password" placeholder="Enter Gemini API Key..." className="bg-transparent text-[11px] w-full focus:outline-none" value={apiKey} onChange={(e) => setApiKey(e.target.value)} /><button onClick={() => setApiStatus('connected')} className={`text-[10px] font-bold px-2 py-0.5 rounded ${apiStatus === 'connected' ? 'bg-green-500 text-white' : 'bg-[#5B5FEF] text-white'}`}>Connect</button></div></div>
+        <div className="p-4">
+            <input type="file" ref={fileInputRef} className="hidden" onChange={(e) => { const f = e.target.files[0]; if(f) { const nf = { name: f.name, type: f.type.startsWith('image/') ? 'image' : 'pdf', url: URL.createObjectURL(f), raw: f }; setUploadedFiles(prev => [...prev, nf]); setActiveFile(nf); setRawFile(f); } }} /> 
+            <div onClick={() => fileInputRef.current?.click()} className="border-2 border-dashed border-slate-300 rounded-xl p-4 text-center cursor-pointer bg-slate-50 hover:border-blue-500 mb-6">
+                <CloudUpload className="w-8 h-8 text-slate-400 mx-auto mb-2" />
+                <p className="text-sm font-semibold">Upload Telecom Documents</p>
+            </div>
+            <h3 className="text-[10px] uppercase font-bold text-slate-400 flex items-center gap-1 mb-2"><Clock className="w-3 h-3" /> Recent History</h3>
+            {uploadedFiles.map((f, i) => (
+                <button key={i} onClick={() => { setActiveFile(f); setRawFile(f.raw); }} className="w-full flex items-center gap-2 p-2 rounded-lg text-xs hover:bg-slate-100 truncate">
+                    <FileIcon className="w-3 h-3" /> {f.name}
+                </button>
+            ))}
+        </div>
+      </aside>
+      
+      <main className="w-[45%] flex flex-col h-full bg-slate-100 overflow-y-auto p-6">
+        {activeFile ? (
+          <div className="space-y-6">
+            <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+                <h1 className="text-xl font-bold">{activeFile.name}</h1>
+                <div className="mt-4 p-2 bg-slate-50 rounded border flex justify-center">
+                    {activeFile.type === 'pdf' ? <embed src={activeFile.url} type="application/pdf" className="w-full h-[500px]" /> : <img src={activeFile.url} alt="Doc" className="max-h-[500px] object-contain rounded" />}
+                </div>
+            </div>
+            <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+              <h2 className="font-bold mb-4 flex items-center gap-2"><Bot className="w-4 h-4" /> AI Actions</h2>
+              <div className="grid grid-cols-2 gap-2">
+                {QUICK_ACTIONS.map(a => (
+                    <button key={a} onClick={() => handleAction(a)} className="flex items-center justify-center gap-2 text-xs py-2 px-3 border rounded-md hover:bg-[#5B5FEF] hover:text-white transition-colors">
+                        {a === 'Mindmap' ? <BrainCircuit size={14}/> : a === 'Presentation' ? <Presentation size={14}/> : null} {a}
+                    </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        ) : (<div className="h-full flex items-center justify-center text-slate-400 italic">Select a document</div>)}
+      </main>
+      
+      <aside className="w-[30%] bg-white flex flex-col border-l border-slate-200">
+        <div className="p-4 border-b flex items-center gap-2"><Bot className="w-5 h-5 text-[#5B5FEF]" /><h2 className="font-bold text-sm">LinkBot</h2></div>
+        <div className="flex-1 overflow-y-auto p-4 space-y-4">{chatLog.map((log, i) => (<div key={i} className={`p-3 rounded-xl text-sm ${log.role === 'user' ? 'bg-[#5B5FEF] text-white ml-auto' : 'bg-slate-100'}`}>{log.text}</div>))}</div>
+        <div className="p-4 border-t">
+          <div className="relative">
+            <input value={inputValue} onChange={(e) => setInputValue(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && sendMessage()} className="w-full pl-3 pr-9 py-2 bg-slate-50 rounded-lg text-sm" placeholder="Ask LinkBot..." />
+            <button onClick={sendMessage} className="absolute right-2 top-2"><Send className="w-4 h-4" /></button>
+          </div>
+        </div>
+      </aside>
+    </div>
+  );
+}
